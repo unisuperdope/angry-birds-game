@@ -38,7 +38,7 @@
         let dragX, dragY, vx = 0, vy = 0;
         let score = 0, level = 1, shotsLeft = 10;
         let pigs = [], obstacles = [];
-        let startElements = [];
+        let startElements = [], gameElements = [], gameOverElements = [];
 
         // ─── pixel art data ───
         const fishPixels = [
@@ -86,9 +86,14 @@
 
         function create() {
             scene = this;
-            this.input.setDefaultCursor('pointer');
+            showStartScreen();
+        }
 
-            // ═══ START SCREEN ═══
+        function showStartScreen() {
+            startElements.forEach(el => el.destroy());
+            startElements = [];
+            scene.input.setDefaultCursor('pointer');
+
             const cx = 400, cy = 300;
 
             // stroke layers for "来摸鱼吧"
@@ -96,7 +101,7 @@
                 [-2,-2],[2,-2],[-2,2],[2,2],[-2,0],[2,0],[0,-2],[0,2]
             ];
             strokeOffsets.forEach(o => {
-                const t = this.add.text(cx + o[0], cy - 100 + o[1], '来摸鱼吧', {
+                const t = scene.add.text(cx + o[0], cy - 100 + o[1], '来摸鱼吧', {
                     fontSize: '64px',
                     fontFamily: 'Arial Black, "Microsoft YaHei", sans-serif',
                     color: '#000000',
@@ -105,7 +110,7 @@
                 startElements.push(t);
             });
 
-            const titleText = this.add.text(cx, cy - 100, '来摸鱼吧', {
+            const titleText = scene.add.text(cx, cy - 100, '来摸鱼吧', {
                 fontSize: '64px',
                 fontFamily: 'Arial Black, "Microsoft YaHei", sans-serif',
                 color: '#ff6ec7',
@@ -113,8 +118,7 @@
             }).setOrigin(0.5).setDepth(1);
             startElements.push(titleText);
 
-            // flash tween
-            this.tweens.add({
+            scene.tweens.add({
                 targets: titleText,
                 alpha: 0.3,
                 duration: 500,
@@ -124,84 +128,89 @@
             });
 
             // pixel fish icon
-            const fishGfx = this.add.graphics();
+            const fishGfx = scene.add.graphics();
             const fishW = fishPixels[0].length * PX;
             const fishH = fishPixels.length * PX;
             drawPixels(fishGfx, fishPixels, cx - fishW / 2, cy + 10, fishColor, 4, 2, fishEyeColor);
             startElements.push(fishGfx);
 
             // clickable zone over the fish
-            const fishZone = this.add.rectangle(cx, cy + 10 + fishH / 2, fishW + 20, fishH + 20, 0x000000, 0);
+            const fishZone = scene.add.rectangle(cx, cy + 10 + fishH / 2, fishW + 20, fishH + 20, 0x000000, 0);
             fishZone.setInteractive({ useHandCursor: true });
             startElements.push(fishZone);
 
             // pixel hand icon next to fish
-            const handGfx = this.add.graphics();
+            const handGfx = scene.add.graphics();
             const handW = handPixels[0].length * PX;
             const handH = handPixels.length * PX;
             drawPixels(handGfx, handPixels, cx - fishW / 2 - handW - 20, cy + 10 + fishH / 2 - handH / 2, handColor);
             startElements.push(handGfx);
 
             // "click to start" subtitle
-            const sub = this.add.text(cx, cy + 100, '戳一下小鱼开始摸鱼', {
+            const sub = scene.add.text(cx, cy + 100, '戳一下小鱼开始摸鱼', {
                 fontSize: '18px',
                 fontFamily: '"Microsoft YaHei", sans-serif',
                 color: '#aaaacc'
             }).setOrigin(0.5);
             startElements.push(sub);
-            this.tweens.add({
+            scene.tweens.add({
                 targets: sub, alpha: 0.3, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut'
             });
 
-            // click fish to start
             fishZone.on('pointerdown', () => {
-                startGame.call(this);
+                startGame();
             });
         }
 
         function startGame() {
             gameStarted = true;
+            level = 1; score = 0;
 
-            // remove start screen
             startElements.forEach(el => el.destroy());
             startElements = [];
 
-            // restore cursor for game
             scene.input.setDefaultCursor('default');
 
-            // title bar
-            scene.add.text(400, 40, '摸鱼小游戏', {
+            const titleBar = scene.add.text(400, 40, '摸鱼小游戏', {
                 fontSize: '32px',
                 fontFamily: 'Arial Black, "Microsoft YaHei", sans-serif',
                 color: '#00ff88',
                 fontStyle: 'bold'
             }).setOrigin(0.5);
+            gameElements.push(titleBar);
 
             scoreText = scene.add.text(700, 40, '得分: 0', {
                 fontSize: '24px', fontFamily: '"Microsoft YaHei", sans-serif', color: '#ffdd44', fontStyle: 'bold'
             }).setOrigin(1, 0.5);
+            gameElements.push(scoreText);
 
             levelText = scene.add.text(700, 72, '第 1 关', {
                 fontSize: '18px', fontFamily: '"Microsoft YaHei", sans-serif', color: '#ff8844'
             }).setOrigin(1, 0.5);
+            gameElements.push(levelText);
 
             shotsText = scene.add.text(700, 98, '剩余: 10 次', {
                 fontSize: '16px', fontFamily: '"Microsoft YaHei", sans-serif', color: '#aaaacc'
             }).setOrigin(1, 0.5);
+            gameElements.push(shotsText);
 
             hintText = scene.add.text(400, 565, '拖拽红球发射，利用反弹清除所有小猪', {
                 fontSize: '15px', fontFamily: '"Microsoft YaHei", sans-serif', color: '#8888aa'
             }).setOrigin(0.5);
+            gameElements.push(hintText);
 
             anchorGfx = scene.add.circle(ANCHOR_X, ANCHOR_Y, 12, 0x8B4513);
             anchorGfx.setStrokeStyle(3, 0x654321);
+            gameElements.push(anchorGfx);
 
             graphics = scene.add.graphics();
+            gameElements.push(graphics);
 
             ball = scene.add.circle(ANCHOR_X, ANCHOR_Y, BALL_R, 0xff4444);
             ball.setStrokeStyle(3, 0xcc0000);
             ball.setInteractive({ draggable: false, useHandCursor: true });
             ball.setDepth(10);
+            gameElements.push(ball);
 
             dragX = ANCHOR_X; dragY = ANCHOR_Y;
 
@@ -261,17 +270,17 @@
             shotsText.setText('剩余: ' + shotsLeft + ' 次');
 
             const L = level - 1;
-            // pig positions per level
+            // pig positions per level — always 5 pigs
             const pigLayouts = [
-                [{x:540,y:340},{x:620,y:290},{x:600,y:400},{x:690,y:350}],
-                [{x:570,y:320},{x:660,y:270},{x:620,y:390},{x:710,y:340}],
-                [{x:580,y:290},{x:650,y:350},{x:600,y:430},{x:700,y:290},{x:690,y:400}],
-                [{x:560,y:260},{x:630,y:310},{x:590,y:380},{x:680,y:250},{x:710,y:350}],
+                [{x:530,y:330},{x:610,y:280},{x:590,y:400},{x:680,y:340},{x:640,y:450}],
+                [{x:550,y:310},{x:630,y:260},{x:600,y:380},{x:690,y:320},{x:660,y:430}],
+                [{x:560,y:290},{x:640,y:340},{x:590,y:420},{x:680,y:280},{x:700,y:390}],
+                [{x:540,y:260},{x:620,y:310},{x:580,y:380},{x:670,y:250},{x:710,y:350}],
                 [{x:550,y:270},{x:620,y:220},{x:670,y:300},{x:600,y:380},{x:700,y:420}],
             ];
 
             const layout = level <= pigLayouts.length ? pigLayouts[L]
-                : Array.from({length: Math.min(4 + L, 8)}, () => ({
+                : Array.from({length: 5}, () => ({
                     x: 520 + Math.random() * 200, y: 220 + Math.random() * 250
                 }));
 
@@ -281,27 +290,27 @@
                 pigs.push(pig);
             });
 
-            // obstacle layouts: each level has more complex blocking structures
+            // obstacle layouts: gradual introduction, capped at moderate difficulty
             const obsLayouts = [
-                // level 1: 2 wood blocks, simple barrier
-                [{x:480,y:350,w:BLOCK_W,h:60,hp:1},{x:480,y:440,w:60,h:BLOCK_W,hp:1}],
-                // level 2: 3 wood + 1 stone, partial walls
-                [{x:500,y:300,w:20,h:80,hp:1},{x:500,y:420,w:60,h:20,hp:1},{x:640,y:280,w:20,h:100,hp:1},{x:580,y:380,w:BLOCK_W,h:BLOCK_W,hp:2}],
-                // level 3: stone fort with wood fill
-                [{x:520,y:280,w:20,h:120,hp:2},{x:520,y:280,w:90,h:20,hp:1},{x:640,y:320,w:20,h:100,hp:2},{x:580,y:420,w:80,h:20,hp:1},{x:680,y:360,w:BLOCK_W,h:20,hp:1}],
-                // level 4: double-layer fort
-                [{x:510,y:260,w:20,h:140,hp:2},{x:560,y:260,w:100,h:20,hp:2},{x:660,y:280,w:20,h:120,hp:2},{x:510,y:400,w:120,h:20,hp:1},{x:600,y:350,w:BLOCK_W,h:BLOCK_W,hp:2},{x:700,y:380,w:20,h:60,hp:1}],
-                // level 5: fortress
-                [{x:500,y:240,w:20,h:160,hp:2},{x:550,y:240,w:80,h:20,hp:2},{x:630,y:260,w:20,h:140,hp:2},{x:680,y:240,w:20,h:60,hp:2},{x:500,y:400,w:150,h:20,hp:2},{x:580,y:350,w:BLOCK_W,h:BLOCK_W,hp:2},{x:680,y:380,w:20,h:80,hp:2}],
+                // level 1: no obstacles, pure aiming practice
+                [],
+                // level 2: 2 wood blocks, gentle intro
+                [{x:520,y:360,w:20,h:50,hp:1},{x:600,y:320,w:50,h:20,hp:1}],
+                // level 3: 3 blocks, slight shielding
+                [{x:540,y:320,w:20,h:60,hp:1},{x:620,y:380,w:50,h:20,hp:1},{x:660,y:300,w:20,h:50,hp:1}],
+                // level 4: 4 blocks, some stone
+                [{x:530,y:310,w:20,h:70,hp:1},{x:600,y:280,w:60,h:20,hp:1},{x:650,y:360,w:20,h:60,hp:2},{x:560,y:420,w:60,h:20,hp:1}],
+                // level 5: 5 blocks, mixed
+                [{x:540,y:280,w:20,h:80,hp:1},{x:610,y:300,w:20,h:60,hp:2},{x:680,y:340,w:20,h:50,hp:1},{x:560,y:400,w:70,h:20,hp:1},{x:650,y:420,w:50,h:20,hp:2}],
             ];
 
             const obs = level <= obsLayouts.length ? obsLayouts[L]
-                : Array.from({length: 4 + L}, () => ({
-                    x: 500 + Math.random() * 200,
-                    y: 240 + Math.random() * 220,
-                    w: 15 + Math.random() * 40,
-                    h: 15 + Math.random() * 40,
-                    hp: Math.random() < 0.4 ? 2 : 1
+                : Array.from({length: Math.min(4 + Math.floor(L / 2), 7)}, () => ({
+                    x: 520 + Math.random() * 180,
+                    y: 260 + Math.random() * 200,
+                    w: 15 + Math.random() * 35,
+                    h: 15 + Math.random() * 35,
+                    hp: Math.random() < 0.3 ? 2 : 1
                 }));
 
             obs.forEach(o => addObstacle(o.x, o.y, o.w, o.h, o.hp));
@@ -411,11 +420,111 @@
             dragX = ANCHOR_X; dragY = ANCHOR_Y;
 
             if (shotsLeft <= 0 && pigs.length > 0) {
+                showGameOver();
+            }
+        }
+
+        // ─── game over screen ───
+        function showGameOver() {
+            gameOverElements.forEach(el => el.destroy());
+            gameOverElements = [];
+
+            const cx = 400, cy = 300;
+
+            // dark overlay
+            const overlay = scene.add.rectangle(cx, cy, 800, 600, 0x000000, 0.7).setDepth(20);
+            gameOverElements.push(overlay);
+
+            // stroke for "挑战失败"
+            const strokeOffsets = [[-2,-2],[2,-2],[-2,2],[2,2],[-2,0],[2,0],[0,-2],[0,2]];
+            strokeOffsets.forEach(o => {
+                const t = scene.add.text(cx + o[0], cy - 80 + o[1], '挑战失败', {
+                    fontSize: '56px',
+                    fontFamily: 'Arial Black, "Microsoft YaHei", sans-serif',
+                    color: '#000000',
+                    fontStyle: 'bold'
+                }).setOrigin(0.5).setAlpha(0.6).setDepth(21);
+                gameOverElements.push(t);
+            });
+
+            const failTitle = scene.add.text(cx, cy - 80, '挑战失败', {
+                fontSize: '56px',
+                fontFamily: 'Arial Black, "Microsoft YaHei", sans-serif',
+                color: '#ff4444',
+                fontStyle: 'bold'
+            }).setOrigin(0.5).setDepth(22);
+            gameOverElements.push(failTitle);
+
+            scene.tweens.add({
+                targets: failTitle, alpha: 0.3, duration: 500, yoyo: true, repeat: -1, ease: 'Sine.easeInOut'
+            });
+
+            // sad pixel fish (upside down variant — flip Y)
+            const sadFishGfx = scene.add.graphics().setDepth(21);
+            const fishW = fishPixels[0].length * PX;
+            const fishH = fishPixels.length * PX;
+            // draw fish flipped vertically
+            const fdata = fishPixels;
+            sadFishGfx.fillStyle(fishColor);
+            for (let r = 0; r < fdata.length; r++) {
+                for (let c = 0; c < fdata[r].length; c++) {
+                    if (fdata[r][c]) {
+                        sadFishGfx.fillRect(cx - fishW/2 + c*PX, cy + 20 + (fdata.length-1-r)*PX, PX, PX);
+                    }
+                }
+            }
+            sadFishGfx.fillStyle(fishEyeColor);
+            sadFishGfx.fillRect(cx - fishW/2 + 4*PX, cy + 20 + (fdata.length-1-2)*PX, PX*2, PX*2);
+            gameOverElements.push(sadFishGfx);
+
+            // score summary
+            const summary = scene.add.text(cx, cy + 70, '得分: ' + score + '   到达第 ' + level + ' 关', {
+                fontSize: '22px', fontFamily: '"Microsoft YaHei", sans-serif', color: '#ffdd44'
+            }).setOrigin(0.5).setDepth(21);
+            gameOverElements.push(summary);
+
+            // "再来一次" button
+            const btnRetry = scene.add.rectangle(cx - 100, cy + 140, 150, 50, 0x44aa44).setDepth(21).setInteractive({ useHandCursor: true });
+            btnRetry.setStrokeStyle(3, 0x228822);
+            const retryTxt = scene.add.text(cx - 100, cy + 140, '再来一次', {
+                fontSize: '24px', fontFamily: 'Arial Black, "Microsoft YaHei", sans-serif', color: '#ffffff', fontStyle: 'bold'
+            }).setOrigin(0.5).setDepth(22);
+            gameOverElements.push(btnRetry, retryTxt);
+
+            // "退出" button
+            const btnQuit = scene.add.rectangle(cx + 100, cy + 140, 150, 50, 0xaa4444).setDepth(21).setInteractive({ useHandCursor: true });
+            btnQuit.setStrokeStyle(3, 0x882222);
+            const quitTxt = scene.add.text(cx + 100, cy + 140, '退出', {
+                fontSize: '24px', fontFamily: 'Arial Black, "Microsoft YaHei", sans-serif', color: '#ffffff', fontStyle: 'bold'
+            }).setOrigin(0.5).setDepth(22);
+            gameOverElements.push(btnQuit, quitTxt);
+
+            btnRetry.on('pointerdown', () => {
+                hideGameOver();
                 level = 1; score = 0;
                 levelText.setText('第 1 关');
                 scoreText.setText('得分: 0');
                 spawnLevel();
-            }
+                scene.input.setDefaultCursor('default');
+            });
+
+            btnQuit.on('pointerdown', () => {
+                hideGameOver();
+                gameElements.forEach(el => el.destroy());
+                gameElements = [];
+                pigs.forEach(p => p.destroy()); pigs = [];
+                obstacles.forEach(o => o.destroy()); obstacles = [];
+                gameStarted = false;
+                scene.input.off('pointerdown', onPointerDown);
+                scene.input.off('pointermove', onPointerMove);
+                scene.input.off('pointerup', onPointerUp);
+                showStartScreen();
+            });
+        }
+
+        function hideGameOver() {
+            gameOverElements.forEach(el => el.destroy());
+            gameOverElements = [];
         }
     </script>
 </body>
