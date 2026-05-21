@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>摸鱼小游戏</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: #1a1a2e;
+        }
+    </style>
+</head>
+<body>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+    <script>
+        const config = {
+            type: Phaser.AUTO,
+            width: 800,
+            height: 600,
+            backgroundColor: '#1a1a2e',
+            scene: { create: create, update: update }
+        };
+
+        const game = new Phaser.Game(config);
+        const PX = 5; // pixel art block size
+
+        const ANCHOR_X = 200, ANCHOR_Y = 400, FORK_GAP = 30;
+        const MAX_DRAG = 150, LAUNCH_POWER = 12, PIG_SIZE = 28;
+        const BALL_R = 16, BLOCK_W = 34;
+
+        let scene, ball, graphics, anchorGfx, scoreText, levelText, shotsText, hintText;
+        let isDragging = false, isFlying = false, gameStarted = false;
+        let dragX, dragY, vx = 0, vy = 0;
+        let score = 0, level = 1, shotsLeft = 10;
+        let pigs = [], obstacles = [];
+        let startElements = [];
+
+        // ─── pixel art data ───
+        const fishPixels = [
+            [0,0,0,0,1,1,0,0,0,0,0],
+            [0,0,0,1,1,1,1,0,0,0,1],
+            [0,1,1,1,1,1,1,1,1,1,1],
+            [0,1,1,1,1,1,1,1,1,1,0],
+            [0,1,1,1,1,1,1,1,1,1,1],
+            [0,0,0,1,1,1,1,0,0,0,1],
+            [0,0,0,0,1,1,0,0,0,0,0],
+        ];
+        const fishColor = 0xff8844;
+        const fishEyeColor = 0xffffff;
+
+        const handPixels = [
+            [0,0,0,1,1,1,1,1,0,0],
+            [0,0,1,1,1,1,1,1,1,0],
+            [0,1,1,1,1,1,1,1,1,1],
+            [1,1,1,1,1,1,1,1,1,1],
+            [0,1,1,1,1,1,1,1,1,0],
+            [0,0,1,1,1,1,1,1,0,0],
+            [0,0,0,1,1,1,1,0,0,0],
+            [0,0,0,1,1,1,1,0,0,0],
+            [0,0,0,1,1,1,1,0,0,0],
+            [0,0,0,1,1,1,1,0,0,0],
+            [0,0,1,1,1,1,1,1,0,0],
+            [0,0,1,1,1,1,1,1,0,0],
+        ];
+        const handColor = 0xffcc88;
+
+        function drawPixels(gfx, data, ox, oy, color, eyeX, eyeY, eyeColor) {
+            gfx.fillStyle(color);
+            for (let r = 0; r < data.length; r++) {
+                for (let c = 0; c < data[r].length; c++) {
+                    if (data[r][c]) {
+                        gfx.fillRect(ox + c * PX, oy + r * PX, PX, PX);
+                    }
+                }
+            }
+            if (eyeX !== undefined) {
+                gfx.fillStyle(eyeColor);
+                gfx.fillRect(ox + eyeX * PX, oy + eyeY * PX, PX * 2, PX * 2);
+            }
+        }
+
+        function create() {
+            scene = this;
+            this.input.setDefaultCursor('pointer');
+
+            // ═══ START SCREEN ═══
+            const cx = 400, cy = 300;
+
+            // stroke layers for "来摸鱼吧"
+            const strokeOffsets = [
+                [-2,-2],[2,-2],[-2,2],[2,2],[-2,0],[2,0],[0,-2],[0,2]
+            ];
+            strokeOffsets.forEach(o => {
+                const t = this.add.text(cx + o[0], cy - 100 + o[1], '来摸鱼吧', {
+                    fontSize: '64px',
+                    fontFamily: 'Arial Black, "Microsoft YaHei", sans-serif',
+                    color: '#000000',
+                    fontStyle: 'bold'
+                }).setOrigin(0.5).setAlpha(0.6);
+                startElements.push(t);
+            });
+
+            const titleText = this.add.text(cx, cy - 100, '来摸鱼吧', {
+                fontSize: '64px',
+                fontFamily: 'Arial Black, "Microsoft YaHei", sans-serif',
+                color: '#ff6ec7',
+                fontStyle: 'bold'
+            }).setOrigin(0.5).setDepth(1);
+            startElements.push(titleText);
+
+            // flash tween
+            this.tweens.add({
+                targets: titleText,
+                alpha: 0.3,
+                duration: 500,
+                yoyo: true,
+                repeat: -1,
+                ease: 'Sine.easeInOut'
+            });
+
+            // pixel fish icon
+            const fishGfx = this.add.graphics();
+            const fishW = fishPixels[0].length * PX;
+            const fishH = fishPixels.length * PX;
+            drawPixels(fishGfx, fishPixels, cx - fishW / 2, cy + 10, fishColor, 4, 2, fishEyeColor);
+            startElements.push(fishGfx);
+
+            // clickable zone over the fish
+            const fishZone = this.add.rectangle(cx, cy + 10 + fishH / 2, fishW + 20, fishH + 20, 0x000000, 0);
+            fishZone.setInteractive({ useHandCursor: true });
+            startElements.push(fishZone);
+
+            // pixel hand icon next to fish
+            const handGfx = this.add.graphics();
+            const handW = handPixels[0].length * PX;
+            const handH = handPixels.length * PX;
+            drawPixels(handGfx, handPixels, cx - fishW / 2 - handW - 20, cy + 10 + fishH / 2 - handH / 2, handColor);
+            startElements.push(handGfx);
+
+            // "click to start" subtitle
+            const sub = this.add.text(cx, cy + 100, '戳一下小鱼开始摸鱼', {
+                fontSize: '18px',
+                fontFamily: '"Microsoft YaHei", sans-serif',
+                color: '#aaaacc'
+            }).setOrigin(0.5);
+            startElements.push(sub);
+            this.tweens.add({
+                targets: sub, alpha: 0.3, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut'
+            });
+
+            // click fish to start
+            fishZone.on('pointerdown', () => {
+                startGame.call(this);
+            });
+        }
+
+        function startGame() {
+            gameStarted = true;
+
+            // remove start screen
+            startElements.forEach(el => el.destroy());
+            startElements = [];
+
+            // restore cursor for game
+            scene.input.setDefaultCursor('default');
+
+            // title bar
+            scene.add.text(400, 40, '摸鱼小游戏', {
+                fontSize: '32px',
+                fontFamily: 'Arial Black, "Microsoft YaHei", sans-serif',
+                color: '#00ff88',
+                fontStyle: 'bold'
+            }).setOrigin(0.5);
+
+            scoreText = scene.add.text(700, 40, '得分: 0', {
+                fontSize: '24px', fontFamily: '"Microsoft YaHei", sans-serif', color: '#ffdd44', fontStyle: 'bold'
+            }).setOrigin(1, 0.5);
+
+            levelText = scene.add.text(700, 72, '第 1 关', {
+                fontSize: '18px', fontFamily: '"Microsoft YaHei", sans-serif', color: '#ff8844'
+            }).setOrigin(1, 0.5);
+
+            shotsText = scene.add.text(700, 98, '剩余: 10 次', {
+                fontSize: '16px', fontFamily: '"Microsoft YaHei", sans-serif', color: '#aaaacc'
+            }).setOrigin(1, 0.5);
+
+            hintText = scene.add.text(400, 565, '拖拽红球发射，利用反弹清除所有小猪', {
+                fontSize: '15px', fontFamily: '"Microsoft YaHei", sans-serif', color: '#8888aa'
+            }).setOrigin(0.5);
+
+            anchorGfx = scene.add.circle(ANCHOR_X, ANCHOR_Y, 12, 0x8B4513);
+            anchorGfx.setStrokeStyle(3, 0x654321);
+
+            graphics = scene.add.graphics();
+
+            ball = scene.add.circle(ANCHOR_X, ANCHOR_Y, BALL_R, 0xff4444);
+            ball.setStrokeStyle(3, 0xcc0000);
+            ball.setInteractive({ draggable: false, useHandCursor: true });
+            ball.setDepth(10);
+
+            dragX = ANCHOR_X; dragY = ANCHOR_Y;
+
+            spawnLevel();
+
+            scene.input.on('pointerdown', onPointerDown);
+            scene.input.on('pointermove', onPointerMove);
+            scene.input.on('pointerup', onPointerUp);
+        }
+
+        function onPointerDown(pointer) {
+            if (!gameStarted || isFlying || shotsLeft <= 0) return;
+            const dist = Phaser.Math.Distance.Between(pointer.x, pointer.y, ball.x, ball.y);
+            if (dist < 34) isDragging = true;
+        }
+
+        function onPointerMove(pointer) {
+            if (!isDragging) return;
+            let dx = pointer.x - ANCHOR_X, dy = pointer.y - ANCHOR_Y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist > MAX_DRAG) { dx = (dx / dist) * MAX_DRAG; dy = (dy / dist) * MAX_DRAG; }
+            dragX = ANCHOR_X + dx; dragY = ANCHOR_Y + dy;
+        }
+
+        function onPointerUp() {
+            if (!isDragging) return;
+            isDragging = false;
+            const dx = ANCHOR_X - dragX, dy = ANCHOR_Y - dragY;
+            if (Math.abs(dx) < 3 && Math.abs(dy) < 3) { dragX = ANCHOR_X; dragY = ANCHOR_Y; return; }
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const speed = Math.min(dist / MAX_DRAG, 1) * LAUNCH_POWER;
+            vx = (dx / dist) * speed;
+            vy = (dy / dist) * speed;
+            isFlying = true;
+            shotsLeft--;
+            shotsText.setText('剩余: ' + shotsLeft + ' 次');
+        }
+
+        // ─── obstacles ───
+        function addObstacle(x, y, w, h, hp) {
+            const color = hp >= 2 ? 0x777777 : 0x8B6914;
+            const stroke = hp >= 2 ? 0x555555 : 0x6B4F10;
+            const block = scene.add.rectangle(x, y, w, h, color);
+            block.setStrokeStyle(2, stroke);
+            block.hp = hp;
+            block.maxHp = hp;
+            block.blockW = w;
+            block.blockH = h;
+            obstacles.push(block);
+        }
+
+        function spawnLevel() {
+            // cleanup
+            pigs.forEach(p => p.destroy()); pigs = [];
+            obstacles.forEach(o => o.destroy()); obstacles = [];
+            shotsLeft = 10;
+            shotsText.setText('剩余: ' + shotsLeft + ' 次');
+
+            const L = level - 1;
+            // pig positions per level
+            const pigLayouts = [
+                [{x:540,y:340},{x:620,y:290},{x:600,y:400},{x:690,y:350}],
+                [{x:570,y:320},{x:660,y:270},{x:620,y:390},{x:710,y:340}],
+                [{x:580,y:290},{x:650,y:350},{x:600,y:430},{x:700,y:290},{x:690,y:400}],
+                [{x:560,y:260},{x:630,y:310},{x:590,y:380},{x:680,y:250},{x:710,y:350}],
+                [{x:550,y:270},{x:620,y:220},{x:670,y:300},{x:600,y:380},{x:700,y:420}],
+            ];
+
+            const layout = level <= pigLayouts.length ? pigLayouts[L]
+                : Array.from({length: Math.min(4 + L, 8)}, () => ({
+                    x: 520 + Math.random() * 200, y: 220 + Math.random() * 250
+                }));
+
+            layout.forEach(pos => {
+                const pig = scene.add.rectangle(pos.x, pos.y, PIG_SIZE, PIG_SIZE, 0x44cc44);
+                pig.setStrokeStyle(3, 0x228822);
+                pigs.push(pig);
+            });
+
+            // obstacle layouts: each level has more complex blocking structures
+            const obsLayouts = [
+                // level 1: 2 wood blocks, simple barrier
+                [{x:480,y:350,w:BLOCK_W,h:60,hp:1},{x:480,y:440,w:60,h:BLOCK_W,hp:1}],
+                // level 2: 3 wood + 1 stone, partial walls
+                [{x:500,y:300,w:20,h:80,hp:1},{x:500,y:420,w:60,h:20,hp:1},{x:640,y:280,w:20,h:100,hp:1},{x:580,y:380,w:BLOCK_W,h:BLOCK_W,hp:2}],
+                // level 3: stone fort with wood fill
+                [{x:520,y:280,w:20,h:120,hp:2},{x:520,y:280,w:90,h:20,hp:1},{x:640,y:320,w:20,h:100,hp:2},{x:580,y:420,w:80,h:20,hp:1},{x:680,y:360,w:BLOCK_W,h:20,hp:1}],
+                // level 4: double-layer fort
+                [{x:510,y:260,w:20,h:140,hp:2},{x:560,y:260,w:100,h:20,hp:2},{x:660,y:280,w:20,h:120,hp:2},{x:510,y:400,w:120,h:20,hp:1},{x:600,y:350,w:BLOCK_W,h:BLOCK_W,hp:2},{x:700,y:380,w:20,h:60,hp:1}],
+                // level 5: fortress
+                [{x:500,y:240,w:20,h:160,hp:2},{x:550,y:240,w:80,h:20,hp:2},{x:630,y:260,w:20,h:140,hp:2},{x:680,y:240,w:20,h:60,hp:2},{x:500,y:400,w:150,h:20,hp:2},{x:580,y:350,w:BLOCK_W,h:BLOCK_W,hp:2},{x:680,y:380,w:20,h:80,hp:2}],
+            ];
+
+            const obs = level <= obsLayouts.length ? obsLayouts[L]
+                : Array.from({length: 4 + L}, () => ({
+                    x: 500 + Math.random() * 200,
+                    y: 240 + Math.random() * 220,
+                    w: 15 + Math.random() * 40,
+                    h: 15 + Math.random() * 40,
+                    hp: Math.random() < 0.4 ? 2 : 1
+                }));
+
+            obs.forEach(o => addObstacle(o.x, o.y, o.w, o.h, o.hp));
+        }
+
+        // ─── update ───
+        function update() {
+            if (!gameStarted) return;
+            graphics.clear();
+
+            if (isDragging) {
+                ball.x = dragX; ball.y = dragY;
+                const topY = ANCHOR_Y - FORK_GAP, botY = ANCHOR_Y + FORK_GAP;
+                const stretch = Phaser.Math.Distance.Between(ANCHOR_X, ANCHOR_Y, dragX, dragY);
+                const alpha = Phaser.Math.Clamp(1 - stretch / MAX_DRAG, 0.2, 1);
+                graphics.lineStyle(4, 0xcc8844, alpha);
+                graphics.lineBetween(ANCHOR_X, topY, dragX, dragY);
+                graphics.lineBetween(ANCHOR_X, botY, dragX, dragY);
+                graphics.fillStyle(0xff6644, alpha);
+                graphics.fillCircle(dragX, dragY, 8);
+            }
+
+            if (isFlying) {
+                ball.x += vx; ball.y += vy;
+                vy += 0.04;
+
+                // pig collision
+                for (let i = pigs.length - 1; i >= 0; i--) {
+                    if (!pigs[i].active) continue;
+                    if (Phaser.Math.Distance.Between(ball.x, ball.y, pigs[i].x, pigs[i].y) < BALL_R + PIG_SIZE / 2) {
+                        hitPig(i); break;
+                    }
+                }
+
+                // obstacle collision (bounce)
+                for (const obs of obstacles) {
+                    if (!obs.active) continue;
+                    if (circleRectCollide(ball.x, ball.y, BALL_R, obs.x, obs.y, obs.blockW, obs.blockH)) {
+                        bounceOff(ball.x, ball.y, obs.x, obs.y, obs.blockW, obs.blockH);
+                        obs.hp--;
+                        if (obs.hp <= 0) {
+                            // destroy obstacle
+                            const ox = obs.x, oy = obs.y;
+                            obs.destroy();
+                            // small fragment effect
+                            for (let j = 0; j < 4; j++) {
+                                const fg = scene.add.rectangle(
+                                    ox + (Math.random()-0.5)*30, oy + (Math.random()-0.5)*30, 6, 6,
+                                    obs.maxHp >= 2 ? 0x999999 : 0xaa8844
+                                );
+                                scene.tweens.add({targets: fg, alpha: 0, scale: 0.3, duration: 300,
+                                    onComplete: () => fg.destroy()});
+                            }
+                        } else {
+                            // darken color to show damage
+                            const c = obs.maxHp >= 2 ? Phaser.Display.Color.GetColor(0x55, 0x55, 0x55) : Phaser.Display.Color.GetColor(0x6B, 0x4F, 0x10);
+                            obs.setFillStyle(c);
+                        }
+                        break;
+                    }
+                }
+
+                // cleanup destroyed obstacles
+                obstacles = obstacles.filter(o => o.active);
+
+                if (ball.x > 850 || ball.x < -50 || ball.y > 650 || ball.y < -50) resetBall();
+            }
+        }
+
+        function circleRectCollide(cx, cy, cr, rx, ry, rw, rh) {
+            const closestX = Math.max(rx - rw/2, Math.min(cx, rx + rw/2));
+            const closestY = Math.max(ry - rh/2, Math.min(cy, ry + rh/2));
+            return Phaser.Math.Distance.Between(cx, cy, closestX, closestY) < cr;
+        }
+
+        function bounceOff(bx, by, rx, ry, rw, rh) {
+            const closestX = Math.max(rx - rw/2, Math.min(bx, rx + rw/2));
+            const closestY = Math.max(ry - rh/2, Math.min(by, ry + rh/2));
+            let nx = bx - closestX, ny = by - closestY;
+            const mag = Math.sqrt(nx*nx + ny*ny);
+            if (mag < 0.01) { nx = vx > 0 ? -1 : 1; ny = 0; }
+            else { nx /= mag; ny /= mag; }
+            const dot = vx * nx + vy * ny;
+            vx -= 2 * dot * nx;
+            vy -= 2 * dot * ny;
+            vx *= 0.6; vy *= 0.6; // damping
+            ball.x += nx * 3; ball.y += ny * 3; // push out
+        }
+
+        function hitPig(index) {
+            const pig = pigs[index];
+            pig.destroy();
+            pigs.splice(index, 1);
+            score += 100;
+            scoreText.setText('得分: ' + score);
+
+            if (pigs.length === 0) {
+                level++;
+                levelText.setText('第 ' + level + ' 关');
+                scene.time.delayedCall(600, () => spawnLevel());
+            }
+        }
+
+        function resetBall() {
+            isFlying = false; vx = 0; vy = 0;
+            ball.x = ANCHOR_X; ball.y = ANCHOR_Y;
+            dragX = ANCHOR_X; dragY = ANCHOR_Y;
+
+            if (shotsLeft <= 0 && pigs.length > 0) {
+                level = 1; score = 0;
+                levelText.setText('第 1 关');
+                scoreText.setText('得分: 0');
+                spawnLevel();
+            }
+        }
+    </script>
+</body>
+</html>
