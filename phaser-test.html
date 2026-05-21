@@ -53,22 +53,6 @@
         const fishColor = 0xff8844;
         const fishEyeColor = 0xffffff;
 
-        const handPixels = [
-            [0,0,0,1,1,1,1,1,0,0],
-            [0,0,1,1,1,1,1,1,1,0],
-            [0,1,1,1,1,1,1,1,1,1],
-            [1,1,1,1,1,1,1,1,1,1],
-            [0,1,1,1,1,1,1,1,1,0],
-            [0,0,1,1,1,1,1,1,0,0],
-            [0,0,0,1,1,1,1,0,0,0],
-            [0,0,0,1,1,1,1,0,0,0],
-            [0,0,0,1,1,1,1,0,0,0],
-            [0,0,0,1,1,1,1,0,0,0],
-            [0,0,1,1,1,1,1,1,0,0],
-            [0,0,1,1,1,1,1,1,0,0],
-        ];
-        const handColor = 0xffcc88;
-
         function drawPixels(gfx, data, ox, oy, color, eyeX, eyeY, eyeColor) {
             gfx.fillStyle(color);
             for (let r = 0; r < data.length; r++) {
@@ -92,7 +76,7 @@
         function showStartScreen() {
             startElements.forEach(el => el.destroy());
             startElements = [];
-            scene.input.setDefaultCursor('pointer');
+            scene.input.setDefaultCursor('grab');
 
             const cx = 400, cy = 300;
 
@@ -139,13 +123,6 @@
             fishZone.setInteractive({ useHandCursor: true });
             startElements.push(fishZone);
 
-            // pixel hand icon next to fish
-            const handGfx = scene.add.graphics();
-            const handW = handPixels[0].length * PX;
-            const handH = handPixels.length * PX;
-            drawPixels(handGfx, handPixels, cx - fishW / 2 - handW - 20, cy + 10 + fishH / 2 - handH / 2, handColor);
-            startElements.push(handGfx);
-
             // "click to start" subtitle
             const sub = scene.add.text(cx, cy + 100, '戳一下小鱼开始摸鱼', {
                 fontSize: '18px',
@@ -158,7 +135,11 @@
             });
 
             fishZone.on('pointerdown', () => {
+                scene.input.setDefaultCursor('grabbing');
                 startGame();
+            });
+            fishZone.on('pointerup', () => {
+                scene.input.setDefaultCursor('grab');
             });
         }
 
@@ -169,7 +150,7 @@
             startElements.forEach(el => el.destroy());
             startElements = [];
 
-            scene.input.setDefaultCursor('default');
+            scene.input.setDefaultCursor('grab');
 
             const titleBar = scene.add.text(400, 40, '摸鱼小游戏', {
                 fontSize: '32px',
@@ -194,7 +175,7 @@
             }).setOrigin(1, 0.5);
             gameElements.push(shotsText);
 
-            hintText = scene.add.text(400, 565, '拖拽红球发射，利用反弹清除所有小猪', {
+            hintText = scene.add.text(400, 565, '拖拽红球发射，清除所有绿色方块', {
                 fontSize: '15px', fontFamily: '"Microsoft YaHei", sans-serif', color: '#8888aa'
             }).setOrigin(0.5);
             gameElements.push(hintText);
@@ -224,7 +205,7 @@
         function onPointerDown(pointer) {
             if (!gameStarted || isFlying || shotsLeft <= 0) return;
             const dist = Phaser.Math.Distance.Between(pointer.x, pointer.y, ball.x, ball.y);
-            if (dist < 34) isDragging = true;
+            if (dist < 34) { isDragging = true; scene.input.setDefaultCursor('grabbing'); }
         }
 
         function onPointerMove(pointer) {
@@ -238,6 +219,7 @@
         function onPointerUp() {
             if (!isDragging) return;
             isDragging = false;
+            scene.input.setDefaultCursor('grab');
             const dx = ANCHOR_X - dragX, dy = ANCHOR_Y - dragY;
             if (Math.abs(dx) < 3 && Math.abs(dy) < 3) { dragX = ANCHOR_X; dragY = ANCHOR_Y; return; }
             const dist = Math.sqrt(dx * dx + dy * dy);
@@ -505,7 +487,7 @@
                 levelText.setText('第 1 关');
                 scoreText.setText('得分: 0');
                 spawnLevel();
-                scene.input.setDefaultCursor('default');
+                scene.input.setDefaultCursor('grab');
             });
 
             btnQuit.on('pointerdown', () => {
